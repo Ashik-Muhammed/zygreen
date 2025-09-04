@@ -1,0 +1,149 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidCertificate() {
+      return request.resource.data.keys().hasAll([
+        'userId', 'courseId', 'userName', 'courseName', 'issueDate', 'verificationCode'
+      ]);
+    }
+
+    // Certificates collection rules
+    match /certificates/{certificateId} {
+      // Allow read if user is the owner or an admin
+      allow read: if isAuthenticated() && 
+        (isOwner(resource.data.userId) || isAdmin());
+      
+      // Allow create if user is authenticated and the data is valid
+      allow create: if isAuthenticated() && 
+        request.resource.data.userId == request.auth.uid &&
+        isValidCertificate();
+      
+      // Only allow updates to the certificateUrl field by admins
+      allow update: if isAdmin() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['certificateUrl']);
+      
+      // Only allow deletes by admins
+      allow delete: if isAdmin();
+    }
+    
+    // User profiles - users can read/write their own profile, admins can read all
+    match /users/{userId} {
+      // Allow admins to read any user profile
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      // Allow users to read their own profile
+      allow get: if isAuthenticated() && request.auth.uid == userId;
+      // Allow admins to list all users (for dashboard)
+      allow list: if isAdmin();
+      // Allow users to update their own profile or admins to update any
+      allow write: if isOwner(userId) || isAdmin();
+    }
+    
+    // Enrollments collection rules
+    match /enrollments/{enrollmentId} {
+      // Allow read if user is the owner (studentId) or an admin
+      allow get: if isAuthenticated() && 
+        (resource.data.studentId == request.auth.uid || isAdmin());
+      
+      // Allow listing enrollments for the current user or admins
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        (request.query.limit != null && request.auth.uid == request.query.get('where.studentId')) ||
+        (request.query.limit != null && !request.query.hasAll(['where'])) ||
+        (request.auth.uid == resource.data.studentId) ||
+        (request.auth.uid == resource.data.userId)
+      );
+      
+      // Allow create if user is authenticated and the data is valid
+      allow create: if isAuthenticated() && 
+        request.resource.data.studentId == request.auth.uid &&
+        request.resource.data.keys().hasAll([
+          'studentId', 'courseId', 'enrolledAt', 'status'
+        ]);
+      
+      // Allow updates to progress and completedLessons by the user or admin
+      allow update: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid || 
+        isAdmin()
+      ) && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasOnly(['progress', 'completedLessons', 'lastAccessed', 'status']);
+      
+      // Allow deletes by admins or the user who created it
+      allow delete: if isAdmin() || 
+        (isAuthenticated() && resource.data.studentId == request.auth.uid);
+    }
+    
+    // Course progress - users can read/write their own progress
+    match /userProgress/{userId}/{document=**} {
+      allow read: if isAuthenticated() && (userId == request.auth.uid || isAdmin());
+      allow write: if isAuthenticated() && (userId == request.auth.uid || isAdmin());
+    }
+    
+    // Course content - readable by all authenticated users, writable by admins
+    match /courses/{courseId} {
+      // Allow all authenticated users to read course details
+      allow read: if isAuthenticated();
+      
+      // Only allow admins to write to courses
+      allow write: if isAdmin();
+      allow get: if isAuthenticated();
+      
+      // Allow listing courses for authenticated users
+      allow list: if isAuthenticated();
+      
+      // Allow updating enrolledStudents field for authenticated users
+      allow update: if isAuthenticated() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolledStudents']);
+    }
+    
+    // Activities collection for admin dashboard
+    match /activities/{activityId} {
+      // Allow admins full access
+      allow read, write: if isAdmin();
+      // Allow users to read their own activities
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      // Allow creation of activities by the system
+      allow create: if isAuthenticated();
+    }
+    
+    
+    // Assignments - users can read their own assignments
+    match /assignments/{assignmentId} {
+      // Allow read if user is the student or an admin
+      allow get: if isAuthenticated() && (
+        resource.data.studentId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      // Allow listing assignments for the current user or admins
+      allow list: if isAuthenticated() && (
+        isAdmin() ||
+        (request.query.limit != null && request.auth.uid == request.query.get('where.studentId')) ||
+        (request.query.limit != null && !request.query.hasAll(['where'])) ||
+        (request.auth.uid == resource.data.studentId)
+      );
+      
+      // Only allow admins to create/update/delete assignments
+      allow create, update, delete: if isAdmin();
+    }
+    
+    // Default deny all other operations
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -122,21 +122,19 @@ const useStudentDashboard = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('Fetching dashboard data for user:', currentUser.uid);
-      
-      // 1. Fetch user's profile for name and other details
+
+      // 1. Get user profile
+      let userData;
       try {
+        console.log('Fetching user document...');
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        console.log('User document:', userDoc.exists() ? 'found' : 'not found');
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          console.log('User data:', userData);
-          setUserName(userData.displayName || userData.name || 'Student');
-        } else {
-          console.warn('User document does not exist in Firestore');
+        if (!userDoc.exists()) {
+          console.error('User document not found');
+          throw new Error('User profile not found');
         }
+        userData = userDoc.data();
+        console.log('User document:', userDoc.exists() ? 'found' : 'not found');
+        console.log('User data:', userData);
       } catch (userError) {
         console.error('Error fetching user document:', userError);
         throw new Error('Failed to load user profile');
@@ -147,24 +145,59 @@ const useStudentDashboard = () => {
       
       try {
         console.log('Fetching enrollments and assignments...');
-        [enrollmentsSnapshot, assignmentsSnapshot] = await Promise.all([
-          getDocs(query(
-            collection(db, 'enrollments'),
-            where('studentId', '==', currentUser.uid)
-          )),
-          getDocs(query(
+        
+        // First, try to get all courses
+        let coursesSnapshot;
+        try {
+          console.log('Fetching courses...');
+          coursesSnapshot = await getDocs(collection(db, 'courses'));
+          console.log(`Found ${coursesSnapshot.docs.length} courses`);
+        } catch (courseError) {
+          console.error('Error fetching courses:', courseError);
+          throw new Error('Failed to load course list');
+        }
+        
+        const courseIds = coursesSnapshot.docs.map(doc => doc.id);
+        console.log(`Checking enrollments in ${courseIds.length} courses`);
+        
+        // Get enrollments for the current user from all courses
+        try {
+          const enrollmentPromises = courseIds.map(courseId => 
+            getDocs(query(
+              collection(db, 'courses', courseId, 'enrollments'),
+              where('studentId', '==', currentUser.uid)
+            ))
+          );
+          
+          const enrollmentSnapshots = await Promise.all(enrollmentPromises);
+          enrollmentsSnapshot = {
+            docs: enrollmentSnapshots.flatMap(snapshot => snapshot.docs)
+          };
+          console.log(`Found ${enrollmentsSnapshot.docs.length} enrollments`);
+        } catch (enrollmentError) {
+          console.error('Error fetching enrollments:', enrollmentError);
+          throw new Error('Failed to load your enrollments');
+        }
+        
+        // Get assignments
+        try {
+          console.log('Fetching assignments...');
+          const assignmentsQuery = query(
             collection(db, 'assignments'),
             where('studentId', '==', currentUser.uid),
             where('status', '!=', 'graded'),
             orderBy('dueDate')
-          ))
-        ]);
-        
-        console.log('Enrollments found:', enrollmentsSnapshot.docs.length);
-        console.log('Assignments found:', assignmentsSnapshot.docs.length);
+          );
+          assignmentsSnapshot = await getDocs(assignmentsQuery);
+          console.log(`Found ${assignmentsSnapshot.docs.length} assignments`);
+        } catch (assignmentError) {
+          console.error('Error fetching assignments:', assignmentError);
+          // Don't fail the whole request if assignments fail
+          assignmentsSnapshot = { docs: [] };
+        }
         
       } catch (queryError) {
-        console.error('Error fetching data:', queryError);
+        console.error('Error in fetchDashboardData:', queryError);
         throw new Error('Failed to load your course data. Please try again later.');
       }
 

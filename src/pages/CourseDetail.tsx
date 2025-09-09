@@ -3,7 +3,15 @@ import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { enrollInCourse } from '../services/courseService';
 import { getDocumentById } from '../services/apiService';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { 
+  doc, 
+  getDoc, 
+  query, 
+  collection, 
+  where, 
+  limit, 
+  getDocs 
+} from 'firebase/firestore';
 import { db } from '../firebase';
 
 // UI Components
@@ -122,29 +130,42 @@ const CourseDetail = () => {
       }
       
       try {
-        // First get the course to ensure we have the correct document ID
-        const courseDoc = await getDocumentById('courses', id);
-        if (!courseDoc) {
-          console.error('Course not found');
-          return;
+        // First try to get the course by document ID
+        let courseDoc = await getDoc(doc(db, 'courses', id));
+        let courseDocumentId = id;
+        
+        // If not found by document ID, try to find by custom 'id' field
+        if (!courseDoc.exists()) {
+          const courseQuery = query(
+            collection(db, 'courses'),
+            where('id', '==', id),
+            limit(1)
+          );
+          
+          const querySnapshot = await getDocs(courseQuery);
+          if (!querySnapshot.empty) {
+            courseDoc = querySnapshot.docs[0];
+            courseDocumentId = courseDoc.id;
+          } else {
+            console.error('Course not found');
+            return;
+          }
         }
         
-        // Use the document ID from the course data for the enrollment check
-        const courseDocumentId = courseDoc.id || id;
+        // Check in the course's enrollments subcollection
+        const enrollmentRef = doc(db, 'courses', courseDocumentId, 'enrollments', currentUser.uid);
+        const enrollmentDoc = await getDoc(enrollmentRef);
         
-        const enrollmentQuery = query(
-          collection(db, 'enrollments'),
-          where('studentId', '==', currentUser.uid),
-          where('courseId', 'in', [id, courseDocumentId]) // Check both possible IDs
-        );
+        // Check if the enrollment exists and has the correct studentId
+        const isEnrolled = enrollmentDoc.exists() && 
+                          enrollmentDoc.data()?.studentId === currentUser.uid;
         
-        const enrollmentSnapshot = await getDocs(enrollmentQuery);
-        setIsEnrolled(!enrollmentSnapshot.empty);
+        setIsEnrolled(isEnrolled);
         
-        if (enrollmentSnapshot.empty) {
-          console.log('No existing enrollment found for this course');
+        if (!isEnrolled) {
+          console.log('No valid enrollment found for this course');
         } else {
-          console.log('User is already enrolled in this course');
+          console.log('User is enrolled in this course');
         }
       } catch (error) {
         console.error('Error checking enrollment:', error);
@@ -158,7 +179,28 @@ const CourseDetail = () => {
       
       try {
         setIsLoading(true);
-        const courseData = await getDocumentById('courses', id);
+        
+        // First try to get the course by document ID
+        let courseDoc = await getDoc(doc(db, 'courses', id));
+        let courseData: any = null;
+        
+        // If not found by document ID, try to find by custom 'id' field
+        if (!courseDoc.exists()) {
+          const courseQuery = query(
+            collection(db, 'courses'),
+            where('id', '==', id),
+            limit(1)
+          );
+          
+          const querySnapshot = await getDocs(courseQuery);
+          if (!querySnapshot.empty) {
+            courseDoc = querySnapshot.docs[0];
+            courseData = { id: courseDoc.id, ...courseDoc.data() };
+          }
+        } else {
+          courseData = { id: courseDoc.id, ...courseDoc.data() };
+        }
+        
         if (courseData) {
           setCourse(courseData as CourseWithInstructor);
           // Check enrollment status after course is loaded

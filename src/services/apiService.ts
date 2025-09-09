@@ -214,43 +214,56 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
       });
 
     try {
-      // Get enrollments data
-      const enrollmentsSnapshot = await getDocs(collection(db, 'enrollments'));
+      // Get all courses to access their enrollments subcollections
+      const coursesSnapshot = await getDocs(collection(db, 'courses'));
+      const allEnrollments: any[] = [];
+      
+      // Get enrollments from each course's enrollments subcollection
+      for (const courseDoc of coursesSnapshot.docs) {
+        const enrollmentsRef = collection(db, 'courses', courseDoc.id, 'enrollments');
+        const enrollmentsSnapshot = await getDocs(enrollmentsRef);
+        enrollmentsSnapshot.docs.forEach(doc => {
+          allEnrollments.push({
+            ...doc.data(),
+            id: doc.id,
+            courseId: courseDoc.id
+          });
+        });
+      }
       
       // Calculate total revenue
-      result.totalRevenue = enrollmentsSnapshot.docs.reduce((sum, doc) => {
-        const data = doc.data();
-        return sum + (typeof data.amountPaid === 'number' ? data.amountPaid : 0);
+      result.totalRevenue = allEnrollments.reduce((sum, enrollment) => {
+        return sum + (typeof enrollment.amountPaid === 'number' ? enrollment.amountPaid : 0);
       }, 0);
 
       // Calculate completion rate
-      const completedEnrollments = enrollmentsSnapshot.docs.filter(
-        doc => doc.data().status === 'completed'
+      const completedEnrollments = allEnrollments.filter(
+        enrollment => enrollment.status === 'completed'
       ).length;
       
-      result.completionRate = enrollmentsSnapshot.size > 0 
-        ? Math.round((completedEnrollments / enrollmentsSnapshot.size) * 100) 
+      result.completionRate = allEnrollments.length > 0 
+        ? Math.round((completedEnrollments / allEnrollments.length) * 100) 
         : 0;
 
       // Process recent enrollments (last 5)
-      const recentEnrollmentsData = enrollmentsSnapshot.docs
+      const recentEnrollmentsData = [...allEnrollments]
         .sort((a, b) => {
-          const aDate = a.data().enrolledAt?.toDate?.() || 0;
-          const bDate = b.data().enrolledAt?.toDate?.() || 0;
+          const aDate = a.enrolledAt?.toDate?.() || 0;
+          const bDate = b.enrolledAt?.toDate?.() || 0;
           return (bDate as any) - (aDate as any);
         })
         .slice(0, 5);
 
       // Process recent enrollments
-      for (const enrollDoc of recentEnrollmentsData) {
-        const data = enrollDoc.data();
+      for (const enrollment of recentEnrollmentsData) {
         let userName = 'Unknown User';
         let userEmail = '';
         let courseTitle = 'Unknown Course';
         
         try {
-          if (data.userId) {
-            const userDoc = await getDoc(doc(db, 'users', data.userId));
+          const userId = enrollment.studentId || enrollment.userId;
+          if (userId) {
+            const userDoc = await getDoc(doc(db, 'users', userId));
             const userData = userDoc.data() as { name?: string; email?: string } | undefined;
             userName = userData?.name || 'Unknown User';
             userEmail = userData?.email || '';
@@ -260,8 +273,8 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
         }
         
         try {
-          if (data.courseId) {
-            const courseDoc = await getDoc(doc(db, 'courses', data.courseId));
+          if (enrollment.courseId) {
+            const courseDoc = await getDoc(doc(db, 'courses', enrollment.courseId));
             const courseData = courseDoc.data() as { title?: string } | undefined;
             courseTitle = courseData?.title || 'Unknown Course';
           }
@@ -269,15 +282,15 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
           console.error('Error fetching course data:', e);
         }
         
-        const enrollDate = data.enrolledAt?.toDate?.() || new Date();
+        const enrollDate = enrollment.enrolledAt?.toDate?.() || new Date();
         
         result.recentEnrollments.push({
-          id: enrollDoc.id,
+          id: enrollment.id,
           student: userName,
           email: userEmail,
           course: courseTitle,
           date: enrollDate.toISOString().split('T')[0],
-          status: data.status || 'pending'
+          status: enrollment.status || 'pending'
         });
       }
 

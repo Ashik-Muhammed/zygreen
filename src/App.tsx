@@ -18,7 +18,7 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import Home from './pages/Home';
 import Courses from './pages/Courses';
 import CourseDetail from './pages/CourseDetail';
-import Pricing from './pages/Pricing';
+import Products from './pages/Products';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -34,6 +34,8 @@ import ManageCourses from './pages/admin/courses/List';
 import CreateCourse from './pages/admin/courses/Create';
 import EditCourse from './pages/admin/courses/Edit';
 import ManageUsers from './pages/admin/users/List';
+import ProductList from './pages/admin/products/ProductList';
+import ProductForm from './pages/admin/products/ProductForm';
 
 // Theme
 import theme from './theme';
@@ -55,7 +57,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/courses" element={<Courses />} />
                 <Route path="/courses/:id" element={<CourseDetail />} />
-                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/products" element={<Products />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/contact" element={<Contact />} />
               </Route>
@@ -92,6 +94,9 @@ function App() {
                 <Route path="courses/create" element={<CreateCourse />} />
                 <Route path="courses/:courseId/edit" element={<EditCourse />} />
                 <Route path="users" element={<ManageUsers />} />
+                <Route path="products" element={<ProductList />} />
+                <Route path="products/new" element={<ProductForm />} />
+                <Route path="products/edit/:id" element={<ProductForm isEdit={true} />} />
               </Route>
               
               {/* 404 - Keep this last */}

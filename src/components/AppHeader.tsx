@@ -43,7 +43,7 @@ const AppHeader = () => {
   const navItems = [
     { name: 'Home', path: '/', icon: FiHome },
     { name: 'Courses', path: '/courses', icon: FiBook },
-    { name: 'Pricing', path: '/pricing', icon: FiDollarSign },
+    { name: 'Products', path: '/products', icon: FiDollarSign },
     { name: 'About', path: '/about', icon: FiInfo },
     { name: 'Contact', path: '/contact', icon: FiMail },
   ];

@@ -5,7 +5,6 @@ import {
   getDocs, 
   setDoc, 
   updateDoc, 
-  deleteDoc, 
   query, 
   where, 
   orderBy, 
@@ -13,6 +12,7 @@ import {
   serverTimestamp,
   increment,
   writeBatch,
+  runTransaction,
   DocumentData,
   QueryDocumentSnapshot,
   DocumentSnapshot
@@ -94,13 +94,179 @@ export const updateCourse = async (courseId: string, updates: Partial<Omit<Cours
   }
 };
 
-export const deleteCourse = async (courseId: string): Promise<void> => {
+/**
+ * Recursively deletes all documents in a collection
+ */
+const deleteCollection = async (collectionPath: string, batchSize = 100): Promise<void> => {
+  console.log(`Deleting collection: ${collectionPath}`);
+  
   try {
-    // Note: You might want to delete related lessons and user progress as well
-    await deleteDoc(doc(db, COURSES_COLLECTION, courseId));
+    const collectionRef = collection(db, collectionPath);
+    const queryRef = query(collectionRef, limit(batchSize));
+    
+    const querySnapshot = await getDocs(queryRef);
+    
+    // No documents to delete
+    if (querySnapshot.size === 0) {
+      console.log(`No documents found in ${collectionPath}`);
+      return;
+    }
+    
+    console.log(`Found ${querySnapshot.size} documents to delete in ${collectionPath}`);
+    
+    // Delete documents in a batch
+    const batch = writeBatch(db);
+    querySnapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    console.log(`Successfully deleted ${querySnapshot.size} documents from ${collectionPath}`);
+    
+    // Recurse to get the next batch if there might be more
+    if (querySnapshot.size === batchSize) {
+      console.log(`Recursing to check for more documents in ${collectionPath}...`);
+      await deleteCollection(collectionPath, batchSize);
+    }
+  } catch (error) {
+    console.error(`Error deleting collection ${collectionPath}:`, error);
+    throw error;
+  }
+};
+
+export const deleteCourse = async (courseId: string): Promise<{ success: boolean; message: string }> => {
+  console.log(`Starting deletion of course ${courseId}...`);
+  const coursesRef = collection(db, COURSES_COLLECTION);
+  let courseRef = doc(db, COURSES_COLLECTION, courseId);
+  let courseData: any = null;
+  
+  try {
+    // 1. First try to get the course by document ID
+    console.log('Fetching course document by ID...');
+    const courseDoc = await getDoc(courseRef);
+    
+    if (courseDoc.exists()) {
+      courseData = { id: courseDoc.id, ...courseDoc.data() };
+      console.log('Found course by document ID:', courseData);
+    } else {
+      // 2. If not found by document ID, try to find by id field
+      console.log(`Course with document ID ${courseId} not found. Searching by id field...`);
+      const querySnapshot = await getDocs(
+        query(coursesRef, where('id', '==', courseId))
+      );
+      
+      if (!querySnapshot.empty) {
+        // Found by id field, use this document
+        const doc = querySnapshot.docs[0];
+        courseData = { id: doc.id, ...doc.data() };
+        courseRef = doc.ref; // Update to use the correct reference
+        console.log('Found course by id field:', courseData);
+      } else {
+        // Course not found by either method
+        console.warn(`Course with ID ${courseId} not found by any method`);
+        
+        // Log all available courses for debugging
+        const allCourses = await getDocs(coursesRef);
+        console.log('Available courses:');
+        allCourses.forEach(doc => {
+          const data = doc.data();
+          console.log(`- Document ID: ${doc.id}, Course ID: ${data.id || 'N/A'}, Title: ${data.title || 'N/A'}`);
+        });
+        
+        return { 
+          success: false, 
+          message: `Course with ID ${courseId} not found. Please check the ID and try again.` 
+        };
+      }
+    }
+    
+    // 2. Delete all related data in a transaction
+    await runTransaction(db, async (transaction) => {
+      // 2.1 Delete enrollments subcollection
+      console.log('Deleting enrollments subcollection...');
+      const enrollmentsQuery = query(
+        collection(db, `${COURSES_COLLECTION}/${courseId}/enrollments`)
+      );
+      const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+      enrollmentsSnapshot.forEach((doc) => {
+        transaction.delete(doc.ref);
+      });
+      
+      // 2.2 Delete all lessons in this course
+      console.log('Deleting lessons...');
+      const lessonsQuery = query(
+        collection(db, LESSONS_COLLECTION),
+        where('courseId', '==', courseId)
+      );
+      const lessonsSnapshot = await getDocs(lessonsQuery);
+      lessonsSnapshot.forEach((doc) => {
+        transaction.delete(doc.ref);
+      });
+      
+      // 2.3 Delete all user progress for this course
+      console.log('Deleting user progress...');
+      const progressQuery = query(
+        collection(db, USER_PROGRESS_COLLECTION),
+        where('courseId', '==', courseId)
+      );
+      const progressSnapshot = await getDocs(progressQuery);
+      progressSnapshot.forEach((doc) => {
+        transaction.delete(doc.ref);
+      });
+      
+      // 2.4 Delete all enrollments for this course from the main enrollments collection
+      console.log('Deleting course enrollments...');
+      const courseEnrollmentsQuery = query(
+        collection(db, 'enrollments'),
+        where('courseId', '==', courseId)
+      );
+      const courseEnrollmentsSnapshot = await getDocs(courseEnrollmentsQuery);
+      courseEnrollmentsSnapshot.forEach((doc) => {
+        transaction.delete(doc.ref);
+      });
+      
+      // 2.5 Delete any certificates for this course
+      console.log('Deleting certificates...');
+      const certificatesQuery = query(
+        collection(db, CERTIFICATES_COLLECTION),
+        where('courseId', '==', courseId)
+      );
+      const certificatesSnapshot = await getDocs(certificatesQuery);
+      certificatesSnapshot.forEach((doc) => {
+        transaction.delete(doc.ref);
+      });
+      
+      // 2.6 Finally, delete the course itself
+      console.log('Deleting course document...');
+      transaction.delete(courseRef);
+    });
+    
+    console.log(`Course ${courseId} and all related data deleted successfully`);
+    
+    // 3. Verify the course was actually deleted
+    console.log('Verifying course deletion...');
+    const verifyDoc = await getDoc(courseRef);
+    
+    if (verifyDoc.exists()) {
+      console.warn('Warning: Course still exists after deletion. This might be a cache issue.');
+      return { 
+        success: false, 
+        message: 'Course deletion may not have completed successfully. Please refresh and try again.' 
+      };
+    }
+    
+    console.log('Course deletion verified successfully');
+    return { 
+      success: true, 
+      message: 'Course and all related data have been deleted successfully.' 
+    };
+    
   } catch (error) {
     console.error('Error deleting course:', error);
-    throw error;
+    return { 
+      success: false, 
+      message: `Failed to delete course: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    };
   }
 };
 
@@ -161,28 +327,23 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
       }
     }
 
-    // Then check if user is already enrolled
+    // Check if user is already enrolled in this course
     console.log(`Checking enrollment for user ${userId} in course ${documentId}`);
-    const enrollmentQuery = query(
-      collection(db, 'enrollments'),
-      where('studentId', '==', userId),
-      where('courseId', '==', documentId)
-    );
+    const existingEnrollmentRef = doc(db, 'courses', documentId, 'enrollments', userId);
+    const enrollmentDoc = await getDoc(existingEnrollmentRef);
     
-    const enrollmentSnapshot = await getDocs(enrollmentQuery);
-    if (!enrollmentSnapshot.empty) {
+    if (enrollmentDoc.exists()) {
       console.log('User is already enrolled in this course');
       throw new Error('You are already enrolled in this course');
     }
 
-    // Create enrollment with course data
     console.log(`Creating enrollment for user ${userId} in course ${documentId}`);
-    const enrollmentRef = doc(collection(db, 'enrollments'));
-    const enrollmentId = enrollmentRef.id;
-    const enrollmentData: Enrollment = {
-      id: enrollmentId,
+    
+    // Create enrollment data structure
+    let enrollmentResult = {
+      id: userId,
       studentId: userId,
-      courseId: documentId, // Use the document ID for consistency
+      courseId: courseId,
       courseTitle: courseData?.title || 'Untitled Course',
       enrolledAt: new Date(),
       status: 'active',
@@ -190,27 +351,48 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
       completed: false,
       hoursSpent: 0,
       completedLessons: [],
-      lastAccessed: new Date(),
-    };
-
-    // Use batch to ensure both operations succeed or fail together
-    const batch = writeBatch(db);
-    
-    // Create enrollment
-    batch.set(enrollmentRef, enrollmentData);
-    
-    // Update course's enrolled students count
-    batch.update(courseRef, {
-      enrolledStudents: increment(1)
-    });
-
-    await batch.commit();
-
-    return {
-      ...enrollmentData,
-      enrolledAt: new Date(),
       lastAccessed: new Date()
     };
+    
+    // Use a transaction to ensure data consistency
+    try {
+      await runTransaction(db, async (transaction) => {
+        // First, check if the user is already enrolled
+        const enrollmentRef = doc(db, 'courses', documentId, 'enrollments', userId);
+        const enrollmentDoc = await transaction.get(enrollmentRef);
+        
+        if (enrollmentDoc.exists()) {
+          throw new Error('You are already enrolled in this course');
+        }
+        
+        // Get the current course data
+        const courseDoc = await transaction.get(courseRef);
+        if (!courseDoc.exists()) {
+          throw new Error('Course not found');
+        }
+        
+        const courseData = courseDoc.data();
+        const currentEnrolled = courseData.students || 0;
+        
+        // Set the enrollment
+        transaction.set(enrollmentRef, {
+          ...enrollmentResult,
+          enrolledAt: serverTimestamp(),
+          lastAccessed: serverTimestamp()
+        });
+        
+        // Update the students count
+        transaction.update(courseRef, {
+          students: currentEnrolled + 1
+        });
+      });
+      
+      console.log('Enrollment created successfully');
+      return enrollmentResult as Enrollment;
+    } catch (error) {
+      console.error('Error in enrollment transaction:', error);
+      throw error instanceof Error ? error : new Error('Failed to complete enrollment. Please try again.');
+    }
   } catch (error) {
     console.error('Error enrolling in course:', error);
     throw error;

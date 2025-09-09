@@ -22,7 +22,7 @@ import {
   FiLoader,
 } from 'react-icons/fi';
 import { useEffect, useState, useRef } from 'react';
-import { getFeaturedCourses, getDocumentById } from '../services/apiService';
+import { getFeaturedCourses} from '../services/apiService';
 import { Course } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { doc, getDoc } from 'firebase/firestore';
@@ -69,39 +69,23 @@ const Home = () => {
     successRate: 0
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Fetch featured courses
+        // Use hardcoded values instead of fetching from Firebase
+        setStats({
+          students: 999,
+          courses: 50,
+          successRate: 95
+        });
+        
+        // Still fetch featured courses if needed
         const courses = await getFeaturedCourses();
         setFeaturedCourses(courses as Course[]);
-        
-        // Fetch site stats
-        try {
-          const statsData = await getDocumentById('siteContent', 'stats') as any;
-          if (statsData) {
-            setStats({
-              students: Number(statsData.students) || 0,
-              courses: Number(statsData.courses) || 0,
-              successRate: Number(statsData.successRate) || 0
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching stats:', error);
-          // Set default stats if document doesn't exist
-          setStats({
-            students: 0,
-            courses: 0,
-            successRate: 0
-          });
-        }
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load data. Please try again later.');
-      } finally {
+      }  finally {
         setLoading(false);
       }
     };

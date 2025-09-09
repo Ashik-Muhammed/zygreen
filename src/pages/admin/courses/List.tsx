@@ -2,7 +2,8 @@ import { Box, Button, Heading, Table, Thead, Tbody, Tr, Th, Td, Badge, HStack, u
 import { FiEdit2, FiTrash2, FiPlus } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
+import { deleteCourse } from '../../../services/courseService';
 import { db } from '../../../firebase';
 
 interface Course {
@@ -55,8 +56,6 @@ const ManageCourses = () => {
   };
 
   const handleDelete = async (id: string) => {
-    console.log('Attempting to delete course with ID:', id);
-    
     if (!id) {
       console.error('No course ID provided for deletion');
       toast({
@@ -79,37 +78,49 @@ const ManageCourses = () => {
       console.log('Deleting course with ID:', id);
       setDeletingCourseId(id);
       
-      // Get the course reference
-      const courseRef = doc(db, 'courses', id);
-      console.log('Course reference:', courseRef.path);
+      // Use the course service to handle deletion and related data cleanup
+      const result = await deleteCourse(id);
       
-      // Delete the document
-      await deleteDoc(courseRef);
-      console.log('Course deleted successfully');
-      
-      // Update the UI optimistically
-      setCourses(prevCourses => {
-        const updatedCourses = prevCourses.filter(course => course.id !== id);
-        console.log('Updated courses list:', updatedCourses.length, 'courses remaining');
-        return updatedCourses;
-      });
-      
-      toast({
-        title: 'Success',
-        description: 'Course deleted successfully',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-        position: 'top',
-      });
+      if (result.success) {
+        console.log('Course and all related data deleted successfully');
+        
+        // Update the UI optimistically
+        setCourses(prevCourses => {
+          const updatedCourses = prevCourses.filter(course => course.id !== id);
+          console.log('Updated courses list:', updatedCourses.length, 'courses remaining');
+          return updatedCourses;
+        });
+        
+        toast({
+          title: 'Success',
+          description: result.message || 'Course deleted successfully',
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+          position: 'top',
+        });
+      } else {
+        // Handle case where course was not found or deletion failed
+        console.warn('Course deletion issue:', result.message);
+        toast({
+          title: 'Warning',
+          description: result.message || 'There was an issue deleting the course',
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+          position: 'top',
+        });
+        
+        // Refresh the courses list to get the latest data
+        fetchCourses();
+      }
     } catch (error) {
-      console.error('Error deleting course:', error);
+      console.error('Unexpected error deleting course:', error);
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-      console.error('Error details:', error);
       
       toast({
         title: 'Error',
-        description: `Failed to delete course: ${errorMessage}`,
+        description: `An unexpected error occurred: ${errorMessage}`,
         status: 'error',
         duration: 5000,
         isClosable: true,

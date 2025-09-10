@@ -12,6 +12,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { getTotalRevenue } from './revenueService';
 
 type CollectionName = 'courses' | 'pricing' | 'testimonials' | 'contactSubmissions' | 'siteContent' | 'users' | 'enrollments';
 
@@ -173,6 +174,88 @@ export const deleteDocument = async (collectionName: CollectionName, id: string)
   }
 };
 
+// Course interface
+export interface Course {
+  id: string;
+  title: string;
+  description?: string;
+  thumbnail?: string;
+  category?: string;
+  status: 'draft' | 'published' | 'archived';
+  slug?: string;
+  enrolledStudents?: string[];
+  createdAt?: Date | string;
+  updatedAt?: Date | string;
+  instructorId?: string;
+  price?: number;
+  duration?: number; // in minutes
+  rating?: number;
+  totalStudents?: number;
+  requirements?: string[];
+  learningOutcomes?: string[];
+  sections?: Array<{
+    id: string;
+    title: string;
+    order: number;
+    lessons: Array<{
+      id: string;
+      title: string;
+      duration: number;
+      type: 'video' | 'article' | 'quiz';
+      isPreview: boolean;
+      content?: string;
+      videoUrl?: string;
+    }>;
+  }>;
+}
+
+// User management functions
+export interface User {
+  id: string;
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  role?: string;
+  createdAt?: Date;
+  lastLoginAt?: Date;
+  isActive?: boolean;
+}
+
+export const getAllUsers = async (): Promise<User[]> => {
+  try {
+    const usersSnapshot = await getDocs(collection(db, 'users'));
+    return usersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      // Convert Firestore timestamps to Date objects
+      createdAt: doc.data().createdAt?.toDate(),
+      lastLoginAt: doc.data().lastLoginAt?.toDate()
+    } as User));
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    throw error;
+  }
+};
+
+export const getAllCourses = async (): Promise<Course[]> => {
+  try {
+    const coursesSnapshot = await getDocs(collection(db, 'courses'));
+    return coursesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      // Convert Firestore timestamps to Date objects
+      createdAt: doc.data().createdAt?.toDate(),
+      updatedAt: doc.data().updatedAt?.toDate(),
+      // Ensure required fields have defaults
+      status: doc.data().status || 'draft',
+      enrolledStudents: doc.data().enrolledStudents || []
+    } as Course));
+  } catch (error) {
+    console.error('Error fetching courses:', error);
+    throw error;
+  }
+};
+
 // Course-specific functions
 // Admin Dashboard Functions
 export const getDashboardStats = async (): Promise<DashboardStats> => {
@@ -218,23 +301,35 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
       const coursesSnapshot = await getDocs(collection(db, 'courses'));
       const allEnrollments: any[] = [];
       
+      console.log(`Found ${coursesSnapshot.size} courses to check for enrollments`);
+      
       // Get enrollments from each course's enrollments subcollection
       for (const courseDoc of coursesSnapshot.docs) {
-        const enrollmentsRef = collection(db, 'courses', courseDoc.id, 'enrollments');
-        const enrollmentsSnapshot = await getDocs(enrollmentsRef);
-        enrollmentsSnapshot.docs.forEach(doc => {
-          allEnrollments.push({
-            ...doc.data(),
-            id: doc.id,
-            courseId: courseDoc.id
+        try {
+          const enrollmentsRef = collection(db, 'courses', courseDoc.id, 'enrollments');
+          const enrollmentsSnapshot = await getDocs(enrollmentsRef);
+          console.log(`Found ${enrollmentsSnapshot.size} enrollments for course ${courseDoc.id}`);
+          
+          enrollmentsSnapshot.docs.forEach(doc => {
+            const data = doc.data();
+            allEnrollments.push({
+              ...data,
+              id: doc.id,
+              courseId: courseDoc.id,
+              // Ensure we have the required fields
+              studentId: data.studentId || data.userId,
+              enrolledAt: data.enrolledAt || new Date()
+            });
           });
-        });
+        } catch (error) {
+          console.error(`Error fetching enrollments for course ${courseDoc.id}:`, error);
+        }
       }
       
-      // Calculate total revenue
-      result.totalRevenue = allEnrollments.reduce((sum, enrollment) => {
-        return sum + (typeof enrollment.amountPaid === 'number' ? enrollment.amountPaid : 0);
-      }, 0);
+      console.log(`Total enrollments found: ${allEnrollments.length}`);
+      
+      // Get total revenue from the revenue service
+      result.totalRevenue = await getTotalRevenue();
 
       // Calculate completion rate
       const completedEnrollments = allEnrollments.filter(
@@ -295,26 +390,73 @@ export const getDashboardStats = async (): Promise<DashboardStats> => {
       }
 
       // Get recent activities (last 5)
-      const activitiesQuery = query(
-        collection(db, 'activities'),
-        orderBy('timestamp', 'desc'),
-        limit(5)
-      );
+      try {
+        const activitiesQuery = query(
+          collection(db, 'activities'),
+          orderBy('timestamp', 'desc'),
+          limit(5)
+        );
 
-      const activitiesSnapshot = await getDocs(activitiesQuery);
-      result.recentActivities = activitiesSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          type: data.type || 'activity',
-          title: data.title || 'New Activity',
-          description: data.description || '',
-          timestamp: data.timestamp?.toDate() || new Date(),
-          userId: data.userId || '',
-          userName: data.userName || 'System',
-          metadata: data.metadata || {}
-        };
-      });
+        console.log('Fetching recent activities...');
+        const activitiesSnapshot = await getDocs(activitiesQuery);
+        console.log(`Found ${activitiesSnapshot.size} activities`);
+        
+        // Define the activity data type from Firestore
+        interface ActivityData {
+          type?: 'enrollment' | 'course_created' | 'course_updated' | 'user_registered' | 'certificate_issued';
+          title?: string;
+          description?: string;
+          timestamp?: any;
+          userId?: string;
+          userName?: string;
+          metadata?: Record<string, any>;
+        }
+
+        // Process activities and fetch user details
+        const activitiesPromises = activitiesSnapshot.docs.map(async (docItem) => {
+          const data = docItem.data() as ActivityData;
+          let userName = data.userName || 'System';
+          
+          // Fetch user details if userId is available
+          if (data.userId) {
+            try {
+              const userDoc = await getDoc(doc(db, 'users', data.userId));
+              if (userDoc.exists()) {
+                const userData = userDoc.data() as { displayName?: string; email?: string };
+                userName = userData.displayName || userData.email || 'User';
+              }
+            } catch (error) {
+              console.error('Error fetching user data for activity:', error);
+            }
+          }
+          
+          // Ensure we have a valid activity type
+          const activityType: 'enrollment' | 'course_created' | 'course_updated' | 'user_registered' | 'certificate_issued' = 
+            ['enrollment', 'course_created', 'course_updated', 'user_registered', 'certificate_issued'].includes(data.type || '')
+              ? data.type as any
+              : 'enrollment';
+          
+          return {
+            id: docItem.id,
+            type: activityType,
+            title: data.title || 'New Activity',
+            description: data.description || '',
+            timestamp: data.timestamp?.toDate() || new Date(),
+            userId: data.userId || '',
+            userName: userName,
+            metadata: data.metadata || {}
+          } as Activity;
+        });
+        
+        // Wait for all activity processing to complete and filter out any invalid activities
+        const activities = await Promise.all(activitiesPromises);
+        result.recentActivities = activities.filter(Boolean);
+        
+      } catch (error) {
+        console.error('Error fetching activities:', error);
+        // Return empty array instead of sample data
+        result.recentActivities = [];
+      }
 
       return result;
     } catch (error) {

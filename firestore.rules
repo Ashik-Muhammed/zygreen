@@ -53,7 +53,7 @@ service cloud.firestore {
       allow write: if isOwner(userId) || isAdmin();
     }
     
-    // Enrollments collection rules (root level)
+    // Enrollments collection rules (both root level and under courses)
     match /enrollments/{enrollmentId} {
       // Allow reading if user is the student or an admin
       allow get: if isAuthenticated() && (
@@ -82,6 +82,29 @@ service cloud.firestore {
       
       // Only allow admins to delete enrollments
       allow delete: if isAdmin();
+    }
+    
+    // Course enrollments subcollection rules
+    match /courses/{courseId}/enrollments/{enrollmentId} {
+      // Allow admins to read all enrollments for dashboard
+      allow read: if isAdmin();
+      
+      // Allow students to read their own enrollments
+      allow get: if isAuthenticated() && resource.data.studentId == request.auth.uid;
+      
+      // Allow creating enrollments (handled by cloud function or admin)
+      allow create: if isAdmin() || 
+        (isAuthenticated() && request.resource.data.studentId == request.auth.uid);
+        
+      // Allow updating enrollment status (for completion tracking)
+      allow update: if isAdmin() || 
+        (isAuthenticated() && resource.data.studentId == request.auth.uid);
+    }
+    
+    // Stats collection for dashboard
+    match /stats/{document=**} {
+      // Allow admins to read and write stats
+      allow read, write: if isAdmin();
     }
     
     // Course progress - users can read/write their own progress

@@ -108,7 +108,7 @@ const useStudentDashboard = () => {
   const [upcomingDeadlines, setUpcomingDeadlines] = useState<UpcomingDeadline[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userName, setUserName] = useState('Student');
+  const [userName] = useState('Student');
 
   const fetchDashboardData = useCallback(async () => {
     console.log('fetchDashboardData called');

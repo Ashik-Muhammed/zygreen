@@ -8,12 +8,13 @@ import {
   sendPasswordResetEmail,
   User as FirebaseUser,
   updateProfile,
+  signInWithPopup,
   GoogleAuthProvider,
-  GithubAuthProvider,
-  signInWithPopup
+  GithubAuthProvider
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { logUserRegistered } from '../services/activityService';
 import type { User } from '../types';
 
 // Social providers
@@ -98,6 +99,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Create user profile in Firestore
       const userProfile = await createUserProfile(user, displayName);
+      
+      // Log the user registration activity
+      if (user.uid && displayName) {
+        await logUserRegistered(user.uid, displayName);
+      }
       
       setCurrentUser(userProfile);
       setFirebaseUser(user);

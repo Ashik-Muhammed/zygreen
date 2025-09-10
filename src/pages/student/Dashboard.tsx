@@ -1,5 +1,5 @@
 import { Box, Button, Flex, Grid, GridItem, Heading, SimpleGrid, Stat, StatLabel, StatNumber, Text, useColorModeValue, Skeleton, Alert, AlertIcon } from '@chakra-ui/react';
-import { FiBookOpen, FiAward, FiClock, FiCalendar, FiArrowRight, FiCheckCircle } from 'react-icons/fi';
+import { FiBookOpen, FiAward, FiClock, FiCalendar, FiArrowRight, FiCheckCircle, FiBarChart2, FiHelpCircle } from 'react-icons/fi';
 import { Link as RouterLink } from 'react-router-dom';
 import useStudentDashboard from '../../hooks/useStudentDashboard';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,34 +12,141 @@ console.log('Firebase Config:', {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'default'
 });
 
-// Skeleton component for loading state
-const DeadlineCardSkeleton = () => (
-  <Box p={4} bg="white" borderRadius="md" borderWidth="1px" mb={3}>
-    <Skeleton height="20px" width="60%" mb={2} />
-    <Skeleton height="16px" width="80%" mb={3} />
-    <Skeleton height="12px" width="40%" />
-  </Box>
-);
-
-// Empty state component
-const EmptyState = ({ icon: Icon, title, description }: { icon: any, title: string, description: string }) => (
-  <Box textAlign="center" py={8} px={4} bg="gray.50" borderRadius="md">
-    <Box as={Icon} size="24px" color="gray.400" mb={3} display="inline-block" />
-    <Text fontWeight="medium" mb={1}>{title}</Text>
-    <Text color="gray.500" fontSize="sm">{description}</Text>
-  </Box>
-);
-
-// Deadline card component
-const DeadlineCard = ({ deadline }: { deadline: any }) => (
-  <Box p={4} bg="white" borderRadius="md" borderWidth="1px" mb={3}>
-    <Text fontWeight="medium" mb={1}>{deadline.title}</Text>
-    <Text color="gray.500" fontSize="sm" mb={2}>{deadline.course}</Text>
-    <Text fontSize="xs" color={deadline.daysLeft <= 1 ? 'red.500' : 'gray.500'}>
-      Due {deadline.daysLeft <= 1 ? 'today' : `in ${deadline.daysLeft} days`}
-    </Text>
-  </Box>
-);
+// Enhanced Deadline card component with visual indicators
+const DeadlineCard = ({ deadline }: { deadline: any }) => {
+  // Calculate days remaining and determine urgency
+  const dueDate = new Date(deadline.dueDate);
+  const today = new Date();
+  const timeDiff = dueDate.getTime() - today.getTime();
+  const daysRemaining = Math.ceil(timeDiff / (1000 * 3600 * 24));
+  
+  let status = 'normal';
+  let statusColor = 'gray';
+  
+  if (daysRemaining < 0) {
+    status = 'Overdue';
+    statusColor = 'red';
+  } else if (daysRemaining === 0) {
+    status = 'Due Today';
+    statusColor = 'orange';
+  } else if (daysRemaining === 1) {
+    status = 'Tomorrow';
+    statusColor = 'orange';
+  } else if (daysRemaining <= 3) {
+    status = `In ${daysRemaining} days`;
+    statusColor = 'yellow';
+  } else {
+    status = `In ${daysRemaining} days`;
+    statusColor = 'green';
+  }
+  
+  const isUrgent = ['red', 'orange'].includes(statusColor);
+  
+  return (
+    <Box 
+      p={4}
+      mb={3}
+      borderRadius="lg"
+      border="1px"
+      borderLeft={isUrgent ? `4px solid` : '1px'}
+      borderLeftColor={isUrgent ? `${statusColor}.500` : 'transparent'}
+      borderColor={isUrgent ? `${statusColor}.100` : 'gray.100'}
+      bg={isUrgent ? `${statusColor}.50` : 'white'}
+      transition="all 0.2s ease"
+      _hover={{
+        transform: 'translateX(2px)',
+        boxShadow: 'sm',
+        borderColor: isUrgent ? `${statusColor}.200` : 'gray.200'
+      }}
+    >
+      <Flex justify="space-between" align="flex-start">
+        <Box flex={1} minW={0}>
+          <Flex align="center" mb={1}>
+            <Box
+              w="8px"
+              h="8px"
+              borderRadius="full"
+              bg={`${statusColor}.500`}
+              mr={2}
+              flexShrink={0}
+            />
+            <Text 
+              fontSize="xs" 
+              fontWeight="semibold" 
+              color={`${statusColor}.600`}
+              textTransform="uppercase"
+              letterSpacing="wide"
+            >
+              {status}
+            </Text>
+          </Flex>
+          <Text 
+            fontWeight="medium" 
+            noOfLines={1}
+            mb={1}
+            color={isUrgent ? 'gray.800' : 'gray.700'}
+          >
+            {deadline.title}
+          </Text>
+          <Text fontSize="sm" color="gray.500" noOfLines={1}>
+            {deadline.courseName || 'No course specified'}
+          </Text>
+        </Box>
+        <Box textAlign="right" ml={3} flexShrink={0}>
+          <Text 
+            fontSize="xs" 
+            color="gray.500"
+            whiteSpace="nowrap"
+          >
+            {dueDate.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric' 
+            })}
+          </Text>
+          <Text 
+            fontSize="xs" 
+            color="gray.400"
+            whiteSpace="nowrap"
+          >
+            {dueDate.toLocaleTimeString('en-US', { 
+              hour: '2-digit', 
+              minute: '2-digit',
+              hour12: true
+            })}
+          </Text>
+        </Box>
+      </Flex>
+      
+      {/* Progress bar for assignments with progress */}
+      {typeof deadline.progress !== 'undefined' && (
+        <Box mt={3}>
+          <Flex justify="space-between" mb={1}>
+            <Text fontSize="xs" color="gray.500">
+              Progress
+            </Text>
+            <Text fontSize="xs" color="gray.500">
+              {Math.round(deadline.progress)}%
+            </Text>
+          </Flex>
+          <Box 
+            h="4px" 
+            bg="gray.100" 
+            borderRadius="full" 
+            overflow="hidden"
+          >
+            <Box 
+              h="100%" 
+              bgGradient={`linear(to-r, ${statusColor}.400, ${statusColor}.600)`}
+              borderRadius="full"
+              width={`${deadline.progress}%`}
+              transition="all 0.5s ease"
+            />
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+};
 
 const StudentDashboard = () => {
   const cardBg = useColorModeValue('white', 'gray.800');
@@ -74,13 +181,47 @@ const StudentDashboard = () => {
     });
   }, [loading, error, userName, stats, recentCourses, upcomingDeadlines]);
 
-  // Stats data for the dashboard cards
+  // Stats data for the dashboard cards with improved structure
   const statsData = [
-    { label: 'Enrolled Courses', value: stats?.enrolledCourses || 0, icon: FiBookOpen, color: 'blue.500' },
-    { label: 'Completed Courses', value: stats?.completedCourses || 0, icon: FiAward, color: 'green.500' },
-    { label: 'Hours Spent', value: stats?.hoursSpent || 0, icon: FiClock, color: 'purple.500' },
-    { label: 'Learning Streak', value: stats?.learningStreak || 0, icon: FiCalendar, color: 'orange.500' },
+    { 
+      label: 'Enrolled Courses', 
+      value: stats?.enrolledCourses || 0, 
+      icon: FiBookOpen, 
+      color: 'blue',
+      description: 'Active courses you\'re enrolled in',
+      trend: stats?.enrolledCourses > 0 ? 'up' : 'none'
+    },
+    { 
+      label: 'Completed', 
+      value: stats?.completedCourses || 0, 
+      icon: FiAward, 
+      color: 'green',
+      description: 'Courses completed successfully',
+      trend: stats?.completedCourses > 0 ? 'up' : 'none'
+    },
+    { 
+      label: 'Hours Spent', 
+      value: `${stats?.hoursSpent || 0}h`, 
+      icon: FiClock, 
+      color: 'purple',
+      description: 'Total learning time',
+      trend: stats?.hoursSpent > 0 ? 'up' : 'none'
+    },
+    { 
+      label: 'Learning Streak', 
+      value: stats?.learningStreak || 0, 
+      icon: FiCalendar, 
+      color: 'orange',
+      description: 'Consecutive days of learning',
+      trend: stats?.learningStreak > 0 ? 'up' : 'none',
+      unit: 'days'
+    },
   ];
+  
+  // Calculate completion percentage
+  const completionPercentage = stats?.enrolledCourses 
+    ? Math.round((stats.completedCourses / stats.enrolledCourses) * 100) 
+    : 0;
 
   if (loading) {
     return (
@@ -88,10 +229,9 @@ const StudentDashboard = () => {
         <Skeleton height="40px" mb={6} />
         <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8}>
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} height="100px" borderRadius="md" />
+            <Skeleton key={i} height="140px" borderRadius="xl" />
           ))}
         </SimpleGrid>
-        <Skeleton height="300px" mb={6} />
       </Box>
     );
   }
@@ -135,72 +275,149 @@ const StudentDashboard = () => {
         <Text color="gray.600">Here's what's happening with your learning today.</Text>
       </Box>
 
-      {/* Stats Grid */}
+      {/* Enhanced Stats Grid */}
       <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={6} mb={8}>
         {loading ? (
-          // Loading skeleton for stats
           Array(4).fill(0).map((_, index) => (
-            <Skeleton key={index} height="110px" borderRadius="lg" />
+            <Skeleton key={index} height="140px" borderRadius="xl" />
           ))
         ) : (
           statsData.map((stat, index) => (
-          <Box 
-            key={index}
-            bg={cardBg}
-            p={6}
-            borderRadius="lg"
-            border="1px"
-            borderColor={borderColor}
-            boxShadow="sm"
-          >
-            <Stat>
-              <Flex>
-                <Box
-                  p={2}
-                  bg={`${stat.color}10`}
-                  color={stat.color}
-                  borderRadius="full"
-                  mr={4}
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  <stat.icon size={20} />
-                </Box>
-                <Box>
-                  <StatLabel color="gray.500" fontSize="sm">
-                    {stat.label}
-                  </StatLabel>
-                  <StatNumber fontSize="2xl">{stat.value}</StatNumber>
-                </Box>
-              </Flex>
-            </Stat>
-          </Box>
+            <Box 
+              key={index}
+              bg={cardBg}
+              p={6}
+              borderRadius="xl"
+              border="1px"
+              borderColor={borderColor}
+              boxShadow="sm"
+              position="relative"
+              overflow="hidden"
+              transition="all 0.3s ease"
+              _hover={{
+                transform: 'translateY(-4px)',
+                boxShadow: 'lg',
+                '& .stat-icon': {
+                  transform: 'scale(1.1)'
+                }
+              }}
+              _before={{
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '4px',
+                bg: `${stat.color}.500`,
+                opacity: 0.8
+              }}
+            >
+              <Stat>
+                <Flex align="center">
+                  <Box
+                    className="stat-icon"
+                    p={3}
+                    bg={`${stat.color}.50`}
+                    color={`${stat.color}.600`}
+                    borderRadius="xl"
+                    mr={4}
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    transition="all 0.3s ease"
+                    boxShadow="md"
+                  >
+                    <stat.icon size={22} />
+                  </Box>
+                  <Box>
+                    <StatLabel color="gray.500" fontSize="sm" fontWeight="medium">
+                      {stat.label}
+                    </StatLabel>
+                    <StatNumber fontSize="2xl" fontWeight="bold" mb={1}>
+                      {stat.value}
+                      {stat.unit && (
+                        <Text as="span" fontSize="md" color="gray.500" ml={1}>
+                          {stat.unit}
+                        </Text>
+                      )}
+                    </StatNumber>
+                    <Text fontSize="xs" color="gray.500">
+                      {stat.description}
+                    </Text>
+                  </Box>
+                </Flex>
+              </Stat>
+            </Box>
           ))
         )}
       </SimpleGrid>
+      
+      {/* Progress Overview */}
+      <Box 
+        bg={cardBg}
+        p={6}
+        borderRadius="xl"
+        border="1px"
+        borderColor={borderColor}
+        boxShadow="sm"
+        mb={8}
+      >
+        <Flex justify="space-between" align="center" mb={4}>
+          <Box>
+            <Text fontSize="lg" fontWeight="semibold">Learning Progress</Text>
+            <Text fontSize="sm" color="gray.500">Your overall course completion</Text>
+          </Box>
+          <Text fontSize="lg" fontWeight="bold" color="blue.500">
+            {completionPercentage}%
+          </Text>
+        </Flex>
+        <Box 
+          h="8px" 
+          bg="gray.100" 
+          borderRadius="full" 
+          overflow="hidden"
+          mb={2}
+        >
+          <Box 
+            h="100%" 
+            bgGradient="linear(to-r, blue.400, blue.600)" 
+            borderRadius="full"
+            width={`${completionPercentage}%`}
+            transition="all 0.5s ease"
+          />
+        </Box>
+        <Flex justify="space-between" fontSize="xs" color="gray.500">
+          <Text>0%</Text>
+          <Text>50%</Text>
+          <Text>100%</Text>
+        </Flex>
+      </Box>
 
       <Grid templateColumns={{ base: '1fr', lg: '2fr 1fr' }} gap={6}>
         {/* Left Column */}
         <GridItem>
-          {/* Continue Learning */}
+          {/* Enhanced Continue Learning Section */}
           <Box 
             bg={cardBg}
             p={6}
-            borderRadius="lg"
+            borderRadius="xl"
             border="1px"
             borderColor={borderColor}
             boxShadow="sm"
             mb={6}
           >
             <Flex justify="space-between" align="center" mb={6}>
-              <Heading as="h2" size="md">Continue Learning</Heading>
+              <Box>
+                <Heading as="h2" size="lg" mb={1}>Continue Learning</Heading>
+                <Text color="gray.500" fontSize="sm">Pick up where you left off</Text>
+              </Box>
               <Button 
                 as={RouterLink} 
                 to="/student/courses" 
                 variant="ghost" 
-                rightIcon={<FiArrowRight />}
+                size="sm"
                 colorScheme="blue"
+                rightIcon={<FiArrowRight />}
                 isDisabled={loading || !recentCourses?.length}
               >
                 View All
@@ -209,54 +426,147 @@ const StudentDashboard = () => {
 
             {loading ? (
               // Loading skeleton for recent courses
-              <Box>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
                 {[1, 2].map((i) => (
-                  <Skeleton key={i} height="100px" mb={4} borderRadius="md" />
-                ))}
-              </Box>
-            ) : recentCourses && recentCourses.length > 0 ? (
-              <SimpleGrid columns={1} spacing={4}>
-                {recentCourses.map((course) => (
-                  <Box 
-                    key={course.id}
-                    p={4}
-                    border="1px"
-                    borderColor={borderColor}
-                    borderRadius="md"
-                    _hover={{
-                      borderColor: 'blue.300',
-                      boxShadow: 'sm',
-                      cursor: 'pointer'
-                    }}
-                    as={RouterLink}
-                    to={`/student/courses/${course.id}/learn`}
-                  >
-                    <Flex direction="column">
-                      <Text fontSize="lg" fontWeight="medium" mb={1}>
-                        {course.title}
-                      </Text>
-                        <Box h="6px" bg="gray.100" borderRadius="full" overflow="hidden" mb={2} mt={2}>
-                        <Box 
-                          h="100%" 
-                          bg="blue.500" 
-                          borderRadius="full" 
-                          width={`${course.progress}%`}
-                        />
-                      </Box>
-                      <Text fontSize="sm" color="gray.500" noOfLines={1} mb={1}>
-                        Next: {course.nextLesson}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500">
-                        Last accessed: {course.lastAccessed}
-                      </Text>
-                    </Flex>
-                  </Box>
+                  <Skeleton key={i} height="180px" borderRadius="xl" />
                 ))}
               </SimpleGrid>
+            ) : recentCourses && recentCourses.length > 0 ? (
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                {recentCourses.map((course) => {
+                  const progress = Math.min(100, Math.max(0, course.progress || 0));
+                  const courseColor = 'blue'; // You can make this dynamic based on course data
+                  
+                  return (
+                    <Box 
+                      key={course.id}
+                      p={5}
+                      border="1px"
+                      borderColor="gray.100"
+                      borderRadius="xl"
+                      bg="white"
+                      transition="all 0.3s ease"
+                      _hover={{
+                        transform: 'translateY(-2px)',
+                        boxShadow: 'lg',
+                        borderColor: `${courseColor}.200`
+                      }}
+                      as={RouterLink}
+                      to={`/student/courses/${course.id}/learn`}
+                      textDecoration="none"
+                    >
+                      <Flex mb={3} align="center">
+                        <Box 
+                          w="48px" 
+                          h="48px" 
+                          bg={`${courseColor}.50`} 
+                          borderRadius="lg"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                          mr={3}
+                          flexShrink={0}
+                        >
+                          <FiBookOpen size={22} color={`var(--chakra-colors-${courseColor}-500)`} />
+                        </Box>
+                        <Box flex={1} minW={0}>
+                          <Text 
+                            fontWeight="semibold" 
+                            noOfLines={1} 
+                            mb={1}
+                            color="gray.800"
+                          >
+                            {course.title}
+                          </Text>
+                          <Text 
+                            fontSize="sm" 
+                            color="gray.500" 
+                            noOfLines={1}
+                          >
+                            {course.instructor || 'Instructor'}
+                          </Text>
+                        </Box>
+                      </Flex>
+                      
+                      {/* Progress Bar */}
+                      <Box mb={4}>
+                        <Flex justify="space-between" mb={1}>
+                          <Text fontSize="xs" fontWeight="medium" color="gray.600">
+                            Progress
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {progress}%
+                          </Text>
+                        </Flex>
+                        <Box 
+                          h="6px" 
+                          bg="gray.100" 
+                          borderRadius="full" 
+                          overflow="hidden"
+                        >
+                          <Box 
+                            h="100%" 
+                            bgGradient={`linear(to-r, ${courseColor}.400, ${courseColor}.600)`}
+                            borderRadius="full"
+                            width={`${progress}%`}
+                            transition="all 0.5s ease"
+                          />
+                        </Box>
+                      </Box>
+                      
+                      <Flex justify="space-between" align="center" mt={4}>
+                        <Box>
+                          <Text fontSize="xs" color="gray.600" fontWeight="medium">
+                            Next: 
+                            <Text as="span" fontWeight="normal" color="gray.500" ml={1}>
+                              {course.nextLesson || 'Not specified'}
+                            </Text>
+                          </Text>
+                          <Text fontSize="xs" color="gray.400">
+                            Last accessed: {course.lastAccessed || 'Never'}
+                          </Text>
+                        </Box>
+                        <Button 
+                          size="sm"
+                          colorScheme={courseColor}
+                          variant={progress >= 100 ? 'outline' : 'solid'}
+                          rightIcon={progress >= 100 ? <FiAward /> : <FiArrowRight />}
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          {progress >= 100 ? 'View Certificate' : 'Continue'}
+                        </Button>
+                      </Flex>
+                    </Box>
+                  );
+                })}
+              </SimpleGrid>
             ) : (
-              <Box textAlign="center" py={8}>
-                <Text color="gray.500" mb={4}>You haven't started any courses yet.</Text>
-                <Button as={RouterLink} to="/courses" colorScheme="blue">
+              <Box 
+                textAlign="center" 
+                py={10} 
+                px={4} 
+                bg="gray.50" 
+                borderRadius="xl"
+                border="1px dashed"
+                borderColor="gray.200"
+              >
+                <Box 
+                  as={FiBookOpen} 
+                  size="32px" 
+                  color="blue.400" 
+                  mb={3} 
+                  display="inline-block"
+                />
+                <Text fontWeight="medium" mb={1} fontSize="lg">No active courses</Text>
+                <Text color="gray.500" mb={4} maxW="md" mx="auto">
+                  You haven't started any courses yet. Explore our catalog and begin your learning journey!
+                </Text>
+                <Button 
+                  as={RouterLink}
+                  to="/courses"
+                  colorScheme="blue"
+                  size="sm"
+                >
                   Browse Courses
                 </Button>
               </Box>
@@ -316,21 +626,92 @@ const StudentDashboard = () => {
               ))}
             </SimpleGrid>
             
-            {/* Upcoming Deadlines Section */}
+            {/* Enhanced Upcoming Deadlines Section */}
             <Box mt={8}>
-              <Heading as="h3" size="sm" mb={4}>Upcoming Deadlines</Heading>
+              <Flex justify="space-between" align="center" mb={4}>
+                <Box>
+                  <Heading as="h3" size="md" mb={1}>Upcoming Deadlines</Heading>
+                  <Text color="gray.500" fontSize="sm">Stay on top of your assignments</Text>
+                </Box>
+                {upcomingDeadlines?.length > 0 && (
+                  <Button 
+                    as={RouterLink}
+                    to="/student/assignments"
+                    variant="ghost"
+                    size="xs"
+                    colorScheme="blue"
+                    rightIcon={<FiArrowRight size={14} />}
+                  >
+                    View All
+                  </Button>
+                )}
+              </Flex>
+              
               {loading ? (
-                Array(3).fill(0).map((_, i) => <DeadlineCardSkeleton key={i} />)
+                // Enhanced loading skeleton
+                <Box>
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton 
+                      key={i} 
+                      height="100px" 
+                      mb={3} 
+                      borderRadius="lg" 
+                      startColor="gray.50" 
+                      endColor="gray.100"
+                    />
+                  ))}
+                </Box>
               ) : upcomingDeadlines && upcomingDeadlines.length > 0 ? (
-                upcomingDeadlines.map(deadline => (
-                  <DeadlineCard key={deadline.id} deadline={deadline} />
-                ))
+                <Box>
+                  {upcomingDeadlines.slice(0, 5).map(deadline => (
+                    <DeadlineCard key={deadline.id} deadline={deadline} />
+                  ))}
+                  
+                  {upcomingDeadlines.length > 5 && (
+                    <Button 
+                      as={RouterLink}
+                      to="/student/assignments"
+                      size="sm"
+                      variant="ghost"
+                      colorScheme="blue"
+                      w="full"
+                      mt={2}
+                    >
+                      View All Deadlines ({upcomingDeadlines.length - 5} more)
+                    </Button>
+                  )}
+                </Box>
               ) : (
-                <EmptyState 
-                  icon={FiCheckCircle}
-                  title="No upcoming deadlines"
-                  description="You're all caught up!"
-                />
+                <Box 
+                  textAlign="center" 
+                  py={8} 
+                  px={4} 
+                  bg="gray.50" 
+                  borderRadius="xl"
+                  border="1px dashed"
+                  borderColor="gray.200"
+                >
+                  <Box 
+                    as={FiCheckCircle} 
+                    size="32px" 
+                    color="green.400" 
+                    mb={3} 
+                    display="inline-block"
+                  />
+                  <Text fontWeight="medium" mb={1} fontSize="lg">All caught up!</Text>
+                  <Text color="gray.500" mb={4} maxW="md" mx="auto">
+                    You don't have any upcoming deadlines. Enjoy your free time!
+                  </Text>
+                  <Button 
+                    as={RouterLink}
+                    to="/student/courses"
+                    colorScheme="green"
+                    size="sm"
+                    variant="outline"
+                  >
+                    Explore Courses
+                  </Button>
+                </Box>
               )}
             </Box>
           </Box>
@@ -374,53 +755,212 @@ const StudentDashboard = () => {
             </Button>
           </Box>
 
-          {/* Quick Actions */}
+          {/* Enhanced Quick Actions */}
           <Box 
             bg={cardBg}
             p={6}
-            borderRadius="lg"
+            borderRadius="xl"
             border="1px"
             borderColor={borderColor}
             boxShadow="sm"
           >
-            <Heading as="h2" size="md" mb={6}>Quick Actions</Heading>
+            <Flex justify="space-between" align="center" mb={6}>
+              <Box>
+                <Heading as="h2" size="lg" mb={1}>Quick Actions</Heading>
+                <Text color="gray.500" fontSize="sm">Frequently used actions</Text>
+              </Box>
+            </Flex>
             
             <SimpleGrid columns={2} spacing={3}>
+              {/* Continue Learning Action */}
               <Button 
-                as={RouterLink} 
-                to="/student/certificates" 
+                as={RouterLink}
+                to="/student/courses"
                 variant="outline" 
-                size="sm"
-                leftIcon={<FiAward />}
+                height="auto"
+                p={3}
+                textAlign="left"
+                borderColor="gray.200"
+                _hover={{
+                  borderColor: 'blue.300',
+                  bg: 'blue.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 'sm'
+                }}
+                transition="all 0.2s"
               >
-                Certificates
+                <Box flex={1}>
+                  <Box 
+                    w="40px" 
+                    h="40px" 
+                    bg="blue.100" 
+                    borderRadius="lg" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    mb={2}
+                    color="blue.600"
+                  >
+                    <FiBookOpen size={20} />
+                  </Box>
+                  <Text fontWeight="medium" fontSize="sm">Continue Learning</Text>
+                  <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                    Pick up where you left off
+                  </Text>
+                </Box>
               </Button>
+              
+              {/* Certificates Action */}
               <Button 
-                as={RouterLink} 
-                to="/student/profile" 
+                as={RouterLink}
+                to="/student/certificates"
                 variant="outline" 
-                size="sm"
-                leftIcon={<FiBookOpen />}
+                height="auto"
+                p={3}
+                textAlign="left"
+                borderColor="gray.200"
+                _hover={{
+                  borderColor: 'green.300',
+                  bg: 'green.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 'sm'
+                }}
+                transition="all 0.2s"
               >
-                My Profile
+                <Box flex={1}>
+                  <Box 
+                    w="40px" 
+                    h="40px" 
+                    bg="green.100" 
+                    borderRadius="lg" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    mb={2}
+                    color="green.600"
+                  >
+                    <FiAward size={20} />
+                  </Box>
+                  <Text fontWeight="medium" fontSize="sm">My Certificates</Text>
+                  <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                    View and download your certificates
+                  </Text>
+                </Box>
               </Button>
+              
+              {/* Assignments Action */}
               <Button 
-                as={RouterLink} 
-                to="/student/settings" 
+                as={RouterLink}
+                to="/student/assignments"
                 variant="outline" 
-                size="sm"
-                leftIcon={<FiCalendar />}
+                height="auto"
+                p={3}
+                textAlign="left"
+                borderColor="gray.200"
+                _hover={{
+                  borderColor: 'purple.300',
+                  bg: 'purple.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 'sm'
+                }}
+                transition="all 0.2s"
               >
-                Schedule
+                <Box flex={1}>
+                  <Box 
+                    w="40px" 
+                    h="40px" 
+                    bg="purple.100" 
+                    borderRadius="lg" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    mb={2}
+                    color="purple.600"
+                  >
+                    <FiCalendar size={20} />
+                  </Box>
+                  <Text fontWeight="medium" fontSize="sm">My Assignments</Text>
+                  <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                    View and submit assignments
+                  </Text>
+                </Box>
               </Button>
+              
+              {/* Progress Action */}
               <Button 
-                as={RouterLink} 
-                to="/student/help" 
+                as={RouterLink}
+                to="/student/progress"
                 variant="outline" 
-                size="sm"
-                leftIcon={<FiClock />}
+                height="auto"
+                p={3}
+                textAlign="left"
+                borderColor="gray.200"
+                _hover={{
+                  borderColor: 'orange.300',
+                  bg: 'orange.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 'sm'
+                }}
+                transition="all 0.2s"
               >
-                Help Center
+                <Box flex={1}>
+                  <Box 
+                    w="40px" 
+                    h="40px" 
+                    bg="orange.100" 
+                    borderRadius="lg" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    mb={2}
+                    color="orange.600"
+                  >
+                    <FiBarChart2 size={20} />
+                  </Box>
+                  <Text fontWeight="medium" fontSize="sm">My Progress</Text>
+                  <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                    Track your learning journey
+                  </Text>
+                </Box>
+              </Button>
+              
+              {/* Help & Support Action */}
+              <Button 
+                as={RouterLink}
+                to="/support"
+                variant="outline" 
+                height="auto"
+                p={3}
+                textAlign="left"
+                borderColor="gray.200"
+                _hover={{
+                  borderColor: 'red.300',
+                  bg: 'red.50',
+                  transform: 'translateY(-2px)',
+                  boxShadow: 'sm'
+                }}
+                transition="all 0.2s"
+                gridColumn={{ base: '1 / -1', md: 'auto' }}
+              >
+                <Box flex={1}>
+                  <Box 
+                    w="40px" 
+                    h="40px" 
+                    bg="red.100" 
+                    borderRadius="lg" 
+                    display="flex" 
+                    alignItems="center" 
+                    justifyContent="center"
+                    mb={2}
+                    color="red.600"
+                  >
+                    <FiHelpCircle size={20} />
+                  </Box>
+                  <Text fontWeight="medium" fontSize="sm">Help & Support</Text>
+                  <Text fontSize="xs" color="gray.500" noOfLines={2}>
+                    Get help with any issues
+                  </Text>
+                </Box>
               </Button>
             </SimpleGrid>
           </Box>

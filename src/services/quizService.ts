@@ -1,6 +1,6 @@
 import { collection, addDoc, updateDoc, doc, getDocs, query, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Quiz, QuizQuestion } from '../types/quiz';
+import { Quiz } from '../types/quiz';
 
 const QUIZZES_COLLECTION = 'quizzes';
 

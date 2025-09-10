@@ -33,9 +33,10 @@ import AdminDashboard from './pages/admin/Dashboard';
 import ManageCourses from './pages/admin/courses/List';
 import CreateCourse from './pages/admin/courses/Create';
 import EditCourse from './pages/admin/courses/Edit';
-import ManageUsers from './pages/admin/users/List';
+import Users from './pages/admin/Users';
 import ProductList from './pages/admin/products/ProductList';
 import ProductForm from './pages/admin/products/ProductForm';
+import SupportPage from './pages/admin/Support';
 
 // Theme
 import theme from './theme';
@@ -93,10 +94,11 @@ function App() {
                 <Route path="courses" element={<ManageCourses />} />
                 <Route path="courses/create" element={<CreateCourse />} />
                 <Route path="courses/:courseId/edit" element={<EditCourse />} />
-                <Route path="users" element={<ManageUsers />} />
+                <Route path="users" element={<Users />} />
                 <Route path="products" element={<ProductList />} />
                 <Route path="products/new" element={<ProductForm />} />
                 <Route path="products/edit/:id" element={<ProductForm isEdit={true} />} />
+                <Route path="support" element={<SupportPage />} />
               </Route>
               
               {/* 404 - Keep this last */}

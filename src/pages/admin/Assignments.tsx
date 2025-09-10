@@ -17,7 +17,7 @@ import {
 } from '@chakra-ui/react';
 import { FiPlus, FiEdit2, FiTrash2, FiEye } from 'react-icons/fi';
 import { Link, useParams } from 'react-router-dom';
-import { Assignment, SubmissionType } from '../../types/assignment';
+import { Assignment } from '../../types/assignment';
 import { getAssignmentsByCourse, deleteAssignment, publishAssignment } from '../../services/assignmentService';
 import ConfirmationDialog from '../../components/common/ConfirmationDialog';
 

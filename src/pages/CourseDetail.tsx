@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { enrollInCourse } from '../services/courseService';
-import { getDocumentById } from '../services/apiService';
 import { 
   doc, 
   getDoc, 

@@ -3,22 +3,29 @@ import {
   doc, 
   getDoc, 
   getDocs, 
+  query, 
+  runTransaction, 
+  serverTimestamp, 
   setDoc, 
   updateDoc, 
-  query, 
-  where, 
-  orderBy, 
+  where,
   limit,
-  serverTimestamp,
-  increment,
   writeBatch,
-  runTransaction,
+  increment,
+  orderBy,
   DocumentData,
-  QueryDocumentSnapshot,
-  DocumentSnapshot
+  DocumentSnapshot,
+  QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Course, Lesson, UserCourseProgress, Certificate } from '../types';
+import type { 
+  Course, 
+  Lesson, 
+  UserCourseProgress, 
+  Certificate, 
+  Enrollment as EnrollmentType,
+  EnrollmentOptions 
+} from '../types';
 
 const COURSES_COLLECTION = 'courses';
 const LESSONS_COLLECTION = 'lessons';
@@ -270,23 +277,14 @@ export const deleteCourse = async (courseId: string): Promise<{ success: boolean
   }
 };
 
-export interface Enrollment {
-  id: string;
-  userId?: string;  // Made optional for backward compatibility
-  studentId?: string;
-  courseId: string;
-  courseTitle?: string;
-  enrolledAt: Date;
-  status: 'active' | 'completed' | 'cancelled';
-  progress: number;
-  completed: boolean;
-  hoursSpent: number;
-  completedLessons: string[];
-  lastAccessed: Date;
-  currentLessonId?: string;
-}
+// Export types for backward compatibility
+export type { EnrollmentType as Enrollment, EnrollmentOptions };
 
-export const enrollInCourse = async (userId: string, courseId: string): Promise<Enrollment> => {
+export const enrollInCourse = async (
+  userId: string, 
+  courseId: string,
+  options: EnrollmentOptions = {}
+): Promise<EnrollmentType> => {
   if (!courseId) {
     throw new Error('Course ID is required');
   }
@@ -339,6 +337,10 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
 
     console.log(`Creating enrollment for user ${userId} in course ${documentId}`);
     
+    // Get course price (default to 0 if not set)
+    const coursePrice = typeof courseData?.price === 'number' ? courseData.price : 0;
+    const amountPaid = options.amountPaid ?? coursePrice;
+    
     // Create enrollment data structure
     let enrollmentResult = {
       id: userId,
@@ -351,7 +353,12 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
       completed: false,
       hoursSpent: 0,
       completedLessons: [],
-      lastAccessed: new Date()
+      lastAccessed: new Date(),
+      // Add payment information
+      amountPaid: amountPaid,
+      paymentMethod: options.paymentMethod || 'free',
+      paymentId: options.paymentId || null,
+      originalPrice: coursePrice
     };
     
     // Use a transaction to ensure data consistency
@@ -375,11 +382,32 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
         const currentEnrolled = courseData.students || 0;
         
         // Set the enrollment
-        transaction.set(enrollmentRef, {
+        const enrollmentData = {
           ...enrollmentResult,
           enrolledAt: serverTimestamp(),
-          lastAccessed: serverTimestamp()
-        });
+          lastAccessed: serverTimestamp(),
+          // Ensure these are included in the document
+          amountPaid: enrollmentResult.amountPaid,
+          paymentMethod: enrollmentResult.paymentMethod,
+          paymentId: enrollmentResult.paymentId,
+          originalPrice: enrollmentResult.originalPrice
+        };
+        
+        transaction.set(enrollmentRef, enrollmentData);
+        
+        // Update total revenue if payment was made
+        if (amountPaid > 0) {
+          // Update the total revenue in a separate collection
+          const revenueRef = doc(db, 'stats', 'total_revenue');
+          transaction.set(
+            revenueRef,
+            { 
+              total: increment(amountPaid),
+              lastUpdated: serverTimestamp()
+            },
+            { merge: true }
+          );
+        }
         
         // Update the students count
         transaction.update(courseRef, {
@@ -388,7 +416,7 @@ export const enrollInCourse = async (userId: string, courseId: string): Promise<
       });
       
       console.log('Enrollment created successfully');
-      return enrollmentResult as Enrollment;
+      return enrollmentResult as EnrollmentType;
     } catch (error) {
       console.error('Error in enrollment transaction:', error);
       throw error instanceof Error ? error : new Error('Failed to complete enrollment. Please try again.');

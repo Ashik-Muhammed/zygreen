@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'fire
 import { db } from '../../../firebase';
 import { useAuth } from '../../../contexts/AuthContext';
 import { FiUpload, FiX } from 'react-icons/fi';
+import { logCourseCreated } from '../../../services/activityService';
 
 // Function to generate a simple 4-letter-1-digit ID
 const generateSimpleId = (): string => {
@@ -148,18 +149,28 @@ const CreateCourse = () => {
       // Add the document to Firestore
       await addDoc(collection(db, 'courses'), courseData);
       
+      // Log the course creation activity
+      if (currentUser) {
+        await logCourseCreated(
+          currentUser.uid, 
+          currentUser.displayName || 'Admin', 
+          formData.title, 
+          courseId
+        );
+      }
+      
       // Update the form with the generated ID
       setFormData(prev => ({ ...prev, id: courseId }));
       
+      // Show success message
       toast({
-        title: 'Course created',
-        description: `Course ID: ${courseId}`,
+        title: 'Course created successfully!',
         status: 'success',
-        duration: 8000,
+        duration: 5000,
         isClosable: true,
       });
       
-      // Navigate to edit page to add course content
+      // Redirect to the edit page
       navigate(`/admin/courses/edit/${courseId}`);
     } catch (error) {
       console.error('Error creating course:', error);

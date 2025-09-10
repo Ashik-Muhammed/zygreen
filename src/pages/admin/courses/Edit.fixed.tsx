@@ -5,12 +5,9 @@ import {
   AlertDialogOverlay, AlertDialogContent, AlertDialogHeader,
   AlertDialogBody, AlertDialogFooter, Spinner, Text
 } from '@chakra-ui/react';
-import { logCourseUpdated } from '../../../services/activityService';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link as RouterLink } from 'react-router-dom';
-import { useAuth } from '../../../contexts/AuthContext';
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
-import { deleteCourse } from '../../../services/courseService';
+import { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { FiArrowLeft, FiSave, FiTrash2 } from 'react-icons/fi';
 
@@ -33,7 +30,6 @@ interface Course {
 
 const EditCourse = () => {
   const { courseId } = useParams<{ courseId: string }>();
-  const { currentUser } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -42,25 +38,11 @@ const EditCourse = () => {
   const toast = useToast();
   const navigate = useNavigate();
   
-  // Common course categories with some defaults
-  const commonCategories = [
-    'Web Development',
-    'Mobile Development',
-    'Data Science',
-    'Design',
-    'Business',
-    'Marketing',
-    'Artificial Intelligence',
-    'Cloud Computing',
-    'Cybersecurity',
-    'Game Development'
-  ];
-
   const [course, setCourse] = useState<Course>({
     title: '',
     subtitle: '',
     description: '',
-    category: '',
+    category: 'web',
     status: 'draft',
     price: 0,
     level: 'beginner',
@@ -68,37 +50,20 @@ const EditCourse = () => {
     students: 0
   });
   
-  const [showCustomCategory, setShowCustomCategory] = useState(false);
-  
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const fetchCourse = async () => {
       if (!courseId) {
-        console.error('No course ID provided in URL');
         setIsLoading(false);
-        toast({
-          title: 'Error',
-          description: 'No course ID provided in URL',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-          position: 'top',
-        });
-        navigate('/admin/courses');
         return;
       }
 
       try {
-        console.log(`Fetching course with ID: ${courseId}`);
         setIsLoading(true);
-        
-        // First try to get the course by document ID
-        const courseRef = doc(db, 'courses', courseId);
-        const courseDoc = await getDoc(courseRef);
+        const courseDoc = await getDoc(doc(db, 'courses', courseId));
         
         if (courseDoc.exists()) {
-          console.log('Found course by document ID:', courseDoc.id);
           const courseData = courseDoc.data();
           setCourse({
             id: courseDoc.id,
@@ -117,43 +82,15 @@ const EditCourse = () => {
             createdAt: courseData.createdAt
           });
         } else {
-          // If not found by document ID, try to find by id field
-          console.log('Course not found by document ID, trying to find by id field...');
-          const querySnapshot = await getDocs(
-            query(collection(db, 'courses'), where('id', '==', courseId))
-          );
-          
-          if (!querySnapshot.empty) {
-            const doc = querySnapshot.docs[0];
-            console.log('Found course by id field:', doc.id);
-            const courseData = doc.data();
-            setCourse({
-              id: doc.id,
-              title: courseData.title || '',
-              subtitle: courseData.subtitle || '',
-              description: courseData.description || '',
-              category: courseData.category || 'web',
-              status: courseData.status || 'draft',
-              price: courseData.price || 0,
-              level: courseData.level || 'beginner',
-              thumbnailUrl: courseData.thumbnailUrl || '',
-              tags: courseData.tags || [],
-              students: courseData.students || 0,
-              instructorId: courseData.instructorId,
-              updatedAt: courseData.updatedAt,
-              createdAt: courseData.createdAt
-            });
-          } else {
-            throw new Error(`No course found with ID: ${courseId}`);
-          }
+          throw new Error('Course not found');
         }
       } catch (error) {
         console.error('Error fetching course:', error);
         toast({
           title: 'Error',
-          description: `Failed to load course data: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          description: 'Failed to load course data. ' + (error instanceof Error ? error.message : ''),
           status: 'error',
-          duration: 10000, // Longer duration for error messages
+          duration: 5000,
           isClosable: true,
           position: 'top',
         });
@@ -218,8 +155,7 @@ const EditCourse = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm() || !course.id) {
-      console.error('Cannot submit: missing course ID or validation failed');
+    if (!validateForm() || !courseId) {
       return;
     }
     
@@ -244,21 +180,7 @@ const EditCourse = () => {
         ...(course.createdAt && { createdAt: course.createdAt })
       };
       
-      console.log('Updating course with data:', courseData);
-      console.log('Using document ID:', course.id);
-      
-      // Use the document ID from the course state, not the URL parameter
-      await updateDoc(doc(db, 'courses', course.id), courseData);
-      
-      // Log the course update activity
-      if (currentUser) {
-        await logCourseUpdated(
-          currentUser.uid,
-          currentUser.displayName || 'Admin',
-          course.title,
-          course.id
-        );
-      }
+      await updateDoc(doc(db, 'courses', courseId), courseData);
       
       toast({
         title: 'Success',
@@ -286,27 +208,17 @@ const EditCourse = () => {
   };
   
   const handleDelete = async () => {
-    if (!course.id) {
-      console.error('Cannot delete: missing course ID');
-      return;
-    }
+    if (!courseId) return;
     
     try {
       setIsDeleting(true);
-      console.log('Deleting course with ID:', course.id);
-      
-      // Use the deleteCourse service function to handle related data cleanup
-      const result = await deleteCourse(course.id);
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to delete course');
-      }
+      await deleteDoc(doc(db, 'courses', courseId));
       
       toast({
         title: 'Success',
-        description: result.message || 'Course and all related data have been deleted successfully.',
+        description: 'Course deleted successfully!',
         status: 'success',
-        duration: 5000,
+        duration: 3000,
         isClosable: true,
         position: 'top',
       });
@@ -316,9 +228,9 @@ const EditCourse = () => {
       console.error('Error deleting course:', error);
       toast({
         title: 'Error',
-        description: `Failed to delete course: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        description: error instanceof Error ? error.message : 'Failed to delete course. Please try again.',
         status: 'error',
-        duration: 10000,
+        duration: 5000,
         isClosable: true,
         position: 'top',
       });
@@ -330,7 +242,7 @@ const EditCourse = () => {
 
   if (isLoading) {
     return (
-      <Box p={8} textAlign="center">
+      <Box p={6} textAlign="center">
         <Spinner size="xl" />
         <Text mt={4}>Loading course data...</Text>
       </Box>
@@ -390,50 +302,19 @@ const EditCourse = () => {
             <HStack width="100%" spacing={6}>
               <FormControl isInvalid={!!errors.category} isRequired>
                 <FormLabel>Category</FormLabel>
-                {!showCustomCategory ? (
-                  <HStack spacing={2}>
-                    <Select
-                      name="category"
-                      value={course.category || ''}
-                      onChange={(e) => {
-                        if (e.target.value === 'custom') {
-                          setShowCustomCategory(true);
-                          setCourse(prev => ({ ...prev, category: '' }));
-                        } else {
-                          handleChange(e);
-                        }
-                      }}
-                      placeholder="Select category"
-                      flex="1"
-                    >
-                      {commonCategories.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                      <option value="custom">+ Add Custom Category</option>
-                    </Select>
-                  </HStack>
-                ) : (
-                  <HStack spacing={2}>
-                    <Input
-                      name="category"
-                      value={course.category || ''}
-                      onChange={handleChange}
-                      placeholder="Enter custom category"
-                      autoFocus
-                    />
-                    <Button 
-                      onClick={() => {
-                        setShowCustomCategory(false);
-                        setCourse(prev => ({ ...prev, category: '' }));
-                      }}
-                      variant="outline"
-                    >
-                      Cancel
-                    </Button>
-                  </HStack>
-                )}
+                <Select
+                  name="category"
+                  value={course.category || ''}
+                  onChange={handleChange}
+                  placeholder="Select category"
+                >
+                  <option value="web">Web Development</option>
+                  <option value="mobile">Mobile Development</option>
+                  <option value="design">Design</option>
+                  <option value="business">Business</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="data">Data Science</option>
+                </Select>
                 <FormErrorMessage>{errors.category}</FormErrorMessage>
               </FormControl>
 

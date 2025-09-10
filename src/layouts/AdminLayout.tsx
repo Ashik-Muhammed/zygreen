@@ -1,6 +1,6 @@
-import { Box, Container, Flex, useDisclosure, useColorModeValue, Button, useToast } from '@chakra-ui/react';
+import { Box, Container, useDisclosure, useColorModeValue, Button, useToast } from '@chakra-ui/react';
 import { Outlet, Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
-import { FiHome, FiBook, FiUsers, FiSettings, FiMenu, FiX, FiLogOut } from 'react-icons/fi';
+import { FiHome, FiBook, FiUsers, FiMenu, FiX, FiLogOut, FiDollarSign } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 
 const AdminLayout = () => {
@@ -18,9 +18,9 @@ const AdminLayout = () => {
   const toast = useToast();
   const navItems = [
     { icon: FiHome, label: 'Dashboard', path: '/admin/dashboard' },
-    { icon: FiBook, label: 'Products', path: '/admin/products' },
+    { icon: FiBook, label: 'Courses', path: '/admin/courses' },
     { icon: FiUsers, label: 'Users', path: '/admin/users' },
-    { icon: FiSettings, label: 'Settings', path: '/admin/settings' },
+    { icon: FiDollarSign, label: 'Products', path: '/admin/products' },
   ];
 
   const handleLogout = async () => {
@@ -126,40 +126,21 @@ const AdminLayout = () => {
           </Box>
         </Box>
 
+        {/* Logout Button */}
         <Box p={4} mt="auto" borderTop="1px" borderColor={borderColor}>
-          <Box
-            as="button"
-            onClick={logout}
-            display="flex"
-            alignItems="center"
+          <Button
+            leftIcon={<FiLogOut />}
+            colorScheme="red"
+            variant="ghost"
             width="100%"
-            px={4}
-            py={2}
-            rounded="md"
+            justifyContent="flex-start"
+            onClick={handleLogout}
             _hover={{
-              bg: hoverBg,
+              bg: useColorModeValue('red.50', 'red.900'),
             }}
           >
-            <FiSettings style={{ marginRight: '12px' }} />
             Logout
-          </Box>
-          
-          {/* Logout Button */}
-          <Box mt={8} p={4} borderTop="1px" borderColor={borderColor}>
-            <Button
-              leftIcon={<FiLogOut />}
-              colorScheme="red"
-              variant="ghost"
-              width="100%"
-              justifyContent="flex-start"
-              onClick={handleLogout}
-              _hover={{
-                bg: useColorModeValue('red.50', 'red.900'),
-              }}
-            >
-              Logout
-            </Button>
-          </Box>
+          </Button>
         </Box>
       </Box>
 

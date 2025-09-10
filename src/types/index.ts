@@ -50,12 +50,37 @@ export interface Lesson {
   updatedAt: Date;
 }
 
+export interface Enrollment {
+  id: string;
+  studentId: string;
+  courseId: string;
+  courseTitle: string;
+  enrolledAt: Date;
+  status: 'active' | 'completed' | 'cancelled';
+  progress: number; // 0-100
+  completed: boolean;
+  hoursSpent: number;
+  completedLessons: string[];
+  lastAccessed: Date;
+  amountPaid: number;
+  paymentMethod: string;
+  paymentId: string | null;
+  originalPrice: number;
+  currentLessonId?: string;
+}
+
+export interface EnrollmentOptions {
+  amountPaid?: number;
+  paymentMethod?: string;
+  paymentId?: string;
+}
+
 export interface UserCourseProgress {
   id?: string;
   userId: string;
   courseId: string;
-  completedLessons: string[]; // Array of lesson IDs
-  progress: number; // Percentage (0-100)
+  completedLessons: string[];
+  progress: number; // 0-100
   startedAt: Date;
   completedAt: Date | null;
   lastAccessed: Date;
